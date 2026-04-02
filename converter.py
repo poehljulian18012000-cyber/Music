@@ -2,65 +2,87 @@ import yt_dlp
 import os
 import subprocess
 
-def update_index(folder, filename):
-    index_path = "index.txt"
-    # Eintrag erstellen: "Ordner/Dateiname"
-    entry = f"{folder}/{filename}"
+# --- CONFIGURATION ---
+BASE_URL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/"
+FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
+FFMPEG_DIR = r"C:\ffmpeg\bin"
+
+def update_category_index(category, filename, song_display_name):
+    """Updates the index.txt inside the specific category folder for Bacofy Pocket."""
+    index_path = os.path.join(category, "index.txt")
     
-    # Prüfen, ob der Song schon drin steht
+    # Format for Bacofy Pocket: DirectURL, SongName
+    file_url = f"{BASE_URL}{category}/{filename}"
+    entry = f"{file_url}, {song_display_name}"
+    
+    # Check if entry already exists
     if os.path.exists(index_path):
         with open(index_path, "r") as f:
             if entry in f.read():
-                print(f"--- {filename} ist schon im Index. ---")
+                print(f"--- Info: {song_display_name} already exists in {category}/index.txt ---")
                 return
 
-    # Song am Ende hinzufügen
+    # Append to the category index
     with open(index_path, "a") as f:
         f.write(entry + "\n")
-    print(f"--- {filename} wurde zur index.txt hinzugefügt! ---")
+    print(f"--- Success: Added to {category}/index.txt ---")
 
 def download_and_convert():
-    url = input("YouTube Link: ")
-    print("Verfügbare Ordner: Tekk, Jpop, Kpop")
-    folder = input("In welchen Ordner? ")
-    song_name = input("Wie soll der Song heißen (ohne Endung)? ")
-    filename = song_name + ".dfpwm"
+    print("==============================")
+    print("   BACOFY SYSTEM - ENCODER    ")
+    print("==============================")
+    
+    url = input("YouTube URL: ")
+    print("\nAvailable Categories (e.g., Tekk, Jpop, Kpop)")
+    category = input("Enter Category: ")
+    song_input = input("Enter Song Name (as shown in Minecraft): ")
+    
+    # Format filename for filesystem (no spaces)
+    filename = song_input.replace(" ", "_") + ".dfpwm"
 
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    # Ensure folder exists
+    if not os.path.exists(category):
+        os.makedirs(category)
 
-    ffmpeg_dir = r"C:\ffmpeg\bin"
-    ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
-
+    # yt-dlp options
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'temp_audio.%(ext)s',
-        'ffmpeg_location': ffmpeg_dir,
+        'ffmpeg_location': FFMPEG_DIR,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'wav',
         }],
     }
 
-    print(f"--- Lade {song_name} herunter... ---")
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+    try:
+        print(f"\n--- Action: Downloading {song_input}... ---")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-    print("--- Bacofy konvertiert... ---")
-    output_path = os.path.join(folder, filename)
-    subprocess.run([
-        ffmpeg_exe, '-y', '-i', 'temp_audio.wav',
-        '-ac', '1', '-ar', '48000', '-acodec', 'dfpwm',
-        output_path
-    ])
+        print("--- Action: Converting to DFPWM... ---")
+        output_path = os.path.join(category, filename)
+        
+        # FFmpeg conversion
+        subprocess.run([
+            FFMPEG_PATH, '-y', '-i', 'temp_audio.wav',
+            '-ac', '1', '-ar', '48000', '-acodec', 'dfpwm',
+            output_path
+        ], check=True)
 
-    # Index aktualisieren
-    update_index(folder, filename)
+        # Update the index file for the Pocket Client
+        update_category_index(category, filename, song_input)
 
-    if os.path.exists('temp_audio.wav'):
-        os.remove('temp_audio.wav')
-    
-    print(f"--- FERTIG! Gespeichert in {output_path} ---")
+        # Cleanup
+        if os.path.exists('temp_audio.wav'):
+            os.remove('temp_audio.wav')
+        
+        print(f"\n=== FINISHED! ===")
+        print(f"File: {output_path}")
+        print("Now run: git add . && git commit -m 'New Song' && git push")
+
+    except Exception as e:
+        print(f"\n!!! ERROR: {e} !!!")
 
 if __name__ == "__main__":
     download_and_convert()
