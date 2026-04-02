@@ -1,12 +1,11 @@
 -- ==========================================
 -- PROGRAM: BACOFY POCKET PRO
--- VERSION: V2.1 (TESTED CONNECTION)
+-- VERSION: V2.2 (REFRESH & CACHE FIXED)
 -- AUTHOR:  Julian & Gemini
--- STATUS:  CONNECTION TO VS CODE STABLE!
 -- ==========================================
 
 local speaker = peripheral.find("speaker")
--- Dein Haupt-Index auf GitHub (wichtig für die Genre-Liste)
+-- Dein Haupt-Index auf GitHub
 local indexURL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/index.txt"
 
 local masterPlaylists, currentSongs = {}, {}
@@ -16,7 +15,7 @@ local logs = {}
 
 local w, h = term.getSize()
 
--- DFPWM DECODER (Standard für ComputerCraft Audio)
+-- DFPWM DECODER
 local function createDecoder()
     local charge, prec = 0, 0
     return function(byte)
@@ -38,6 +37,29 @@ local function log(msg, color)
     if #logs > 4 then table.remove(logs, 1) end
 end
 
+-- TEXTLISTEN LADEN (MIT CACHE-BYPASS)
+local function getList(url)
+    -- Wir hängen einen Zeitstempel an, damit GitHub uns nicht die alte Datei schickt
+    local timestamp = os.epoch("utc")
+    local cacheFreeUrl = url:gsub("%s+", "") .. "?t=" .. timestamp
+    
+    local res = http.get(cacheFreeUrl)
+    if not res then 
+        log("Link Error!", colors.red)
+        return nil 
+    end
+    
+    local list = {}
+    for line in res.readAll():gmatch("[^\r\n]+") do
+        local l, n = line:match("^(.*),(.*)$")
+        if l then 
+            table.insert(list, {url=l:gsub("%s+",""), name=n:match("^%s*(.-)%s*$")}) 
+        end
+    end
+    res.close()
+    return list
+end
+
 -- UI ZEICHNEN
 local function drawUI()
     term.setBackgroundColor(colors.black)
@@ -45,11 +67,10 @@ local function drawUI()
     
     term.setCursorPos(1, 1)
     term.setTextColor(colors.cyan)
-    -- HIER SIEHST DU DAS UPDATE IM SPIEL:
-    term.write(view == "MASTER" and "--- BACOFY V2.1 ---" or "--- " .. string.upper(selectedPlaylistName) .. " ---")
+    term.write(view == "MASTER" and "--- BACOFY V2.2 ---" or "--- " .. string.upper(selectedPlaylistName) .. " ---")
     
     local displayList = (view == "MASTER") and masterPlaylists or currentSongs
-    if displayList then
+    if displayList and #displayList > 0 then
         for i, item in ipairs(displayList) do
             if i > h - 8 then break end
             local isCurrent = (view == "SONGS" and i == currentIdx and isPlaying)
@@ -58,6 +79,10 @@ local function drawUI()
             term.setCursorPos(1, 1 + i)
             term.write(string.sub(i .. ". " .. item.name, 1, w))
         end
+    else
+        term.setCursorPos(1, 3)
+        term.setTextColor(colors.lightGray)
+        term.write("No entries found.")
     end
     
     term.setBackgroundColor(colors.gray)
@@ -84,15 +109,15 @@ local function drawUI()
     end
 end
 
--- AUDIO STREAMING LOGIK
+-- AUDIO STREAMING
 local function playSong(url)
     if not speaker then log("No Speaker!", colors.red) return end
     local res = http.get({ url = url:gsub("%s+", ""), binary = true })
-    if not res then log("HTTP Link Error!", colors.red) return end
+    if not res then log("Stream Error!", colors.red) return end
     
     local decode = createDecoder()
     isPlaying = true
-    log("Streaming...", colors.lime)
+    log("Playing...", colors.lime)
     
     while isPlaying do
         local chunk = res.read(1024)
@@ -114,20 +139,7 @@ local function playSong(url)
     end
 end
 
--- TEXTLISTEN LADEN (index.txt & playlist.txt)
-local function getList(url)
-    local res = http.get(url)
-    if not res then return nil end
-    local list = {}
-    for line in res.readAll():gmatch("[^\r\n]+") do
-        local l, n = line:match("^(.*),(.*)$")
-        if l then table.insert(list, {url=l:gsub("%s+",""), name=n:match("^%s*(.-)%s*$")}) end
-    end
-    res.close()
-    return list
-end
-
--- KLICK-STEUERUNG
+-- STEUERUNG
 local function inputTask()
     while true do
         local _, _, x, y = os.pullEvent("mouse_click")
@@ -135,16 +147,28 @@ local function inputTask()
             local choice = y - 1
             if view == "MASTER" and masterPlaylists[choice] then
                 selectedPlaylistName = masterPlaylists[choice].name
-                log("Loading " .. selectedPlaylistName, colors.cyan)
+                log("Loading songs...", colors.cyan)
                 currentSongs = getList(masterPlaylists[choice].url)
-                if currentSongs then view = "SONGS" end
+                if currentSongs then 
+                    view = "SONGS" 
+                    currentIdx = 1
+                end
             elseif view == "SONGS" and currentSongs[choice] then
                 currentIdx, isPlaying = choice, false
                 os.queueEvent("start_music")
             end
         elseif y == h-2 then
-            if x <= 8 then view = "MASTER" 
-            elseif x >= 10 then vol = math.min(1, vol + 0.1); if vol >= 1 then vol = 0.1 end end
+            if x <= 10 then 
+                if view == "SONGS" then 
+                    view = "MASTER" 
+                else
+                    log("Refreshing Genres...", colors.yellow)
+                    masterPlaylists = getList(indexURL)
+                end
+            elseif x >= 12 then 
+                vol = math.min(1, vol + 0.1)
+                if vol >= 1 then vol = 0.1 end 
+            end
         elseif y == h-1 then
             if x <= 4 then isPlaying = false; currentIdx = currentIdx - 1; if currentIdx < 1 then currentIdx = #currentSongs end; os.queueEvent("start_music")
             elseif x <= 11 then if isPlaying then isPlaying = false else os.queueEvent("start_music") end
@@ -154,7 +178,7 @@ local function inputTask()
     end
 end
 
--- START DES PROGRAMMS
+-- START
 log("Bacofy Booting...", colors.cyan)
 masterPlaylists = getList(indexURL)
 drawUI()
@@ -164,7 +188,9 @@ parallel.waitForAny(
     function()
         while true do
             os.pullEvent("start_music")
-            playSong(currentSongs[currentIdx].url)
+            if currentSongs and currentSongs[currentIdx] then
+                playSong(currentSongs[currentIdx].url)
+            end
         end
     end
 )
