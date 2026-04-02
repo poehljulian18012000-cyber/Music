@@ -7,66 +7,77 @@ BASE_URL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/ma
 FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFMPEG_DIR = r"C:\ffmpeg\bin"
 
-def update_genre_index(category, filename, song_display_name):
-    """Adds the song link to the specific genre index (e.g. Jpop/index.txt)"""
-    index_path = os.path.join(category, "index.txt")
+def update_playlist_file(category, filename, song_display_name):
+    """Adds the direct raw link to the playlist.txt inside the genre folder."""
+    # Wir nutzen jetzt playlist.txt, damit Bacofy es sofort findet
+    playlist_path = os.path.join(category, "playlist.txt")
     file_url = f"{BASE_URL}{category}/{filename}"
     entry = f"{file_url}, {song_display_name}"
     
-    # Check for duplicates
-    if os.path.exists(index_path):
-        with open(index_path, "r") as f:
+    # Check if file exists to avoid duplicates
+    if os.path.exists(playlist_path):
+        with open(playlist_path, "r") as f:
             if entry in f.read():
-                print(f"--- Info: {song_display_name} already exists in {category} ---")
+                print(f"--- Info: {song_display_name} ist bereits in der {category}/playlist.txt ---")
                 return
 
-    with open(index_path, "a") as f:
+    # Append entry
+    with open(playlist_path, "a") as f:
         f.write(entry + "\n")
-    print(f"--- Success: {song_display_name} added to {category}/index.txt ---")
+    print(f"--- Success: Link in {category}/playlist.txt gespeichert ---")
 
-def run_bacofy():
-    print("=== BACOFY MUSIC ENCODER (English) ===")
-    url = input("YouTube URL: ")
-    category = input("Genre (Folder name, e.g., Jpop or Tekk): ")
-    song_name = input("Song Name (for the UI): ")
+def run_bacofy_encoder():
+    print("====================================")
+    print("   BACOFY ENCODER - PLAYLIST MODE   ")
+    print("====================================")
     
-    # Clean filename
+    raw_url = input("YouTube URL: ")
+    category = input("Genre/Ordner (z.B. Jpop, Tekk): ")
+    song_name = input("Song Name für Minecraft: ")
+    
+    # Bereinige Dateiname (keine Leerzeichen für GitHub Links)
     safe_filename = song_name.replace(" ", "_") + ".dfpwm"
     
     if not os.path.exists(category):
         os.makedirs(category)
 
+    # yt-dlp Optionen: 'noplaylist' sorgt dafür, dass nur 1 Song geladen wird!
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'temp_audio.%(ext)s',
+        'noplaylist': True, 
         'ffmpeg_location': FFMPEG_DIR,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]
     }
 
     try:
-        print(f"--- Downloading: {song_name} ---")
+        print(f"\n--- Lade Song herunter... ---")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            ydl.download([raw_url])
 
-        print(f"--- Converting to DFPWM ---")
+        print(f"--- Konvertiere zu DFPWM... ---")
         output_file = os.path.join(category, safe_filename)
+        
+        # FFmpeg Prozess
         subprocess.run([
             FFMPEG_PATH, '-y', '-i', 'temp_audio.wav',
             '-ac', '1', '-ar', '48000', '-acodec', 'dfpwm',
             output_file
         ], check=True)
 
-        update_genre_index(category, safe_filename, song_name)
+        # Playlist-Datei im Unterordner aktualisieren
+        update_playlist_file(category, safe_filename, song_name)
 
+        # Temporäre WAV löschen
         if os.path.exists('temp_audio.wav'):
             os.remove('temp_audio.wav')
             
-        print("\n=== DONE! ===")
-        print(f"Folder: {category} | File: {safe_filename}")
-        print("Ready for: git add . && git commit -m 'Add song' && git push")
+        print("\n=== FERTIG! ===")
+        print(f"Datei erstellt: {output_file}")
+        print("Jetzt: git add . && git commit -m 'Add Song' && git push")
 
     except Exception as e:
-        print(f"!!! Error: {e} !!!")
+        print(f"\n!!! FEHLER: {e} !!!")
 
 if __name__ == "__main__":
-    run_bacofy()
+    run_bacofy_encoder()
