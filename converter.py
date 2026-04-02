@@ -7,82 +7,66 @@ BASE_URL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/ma
 FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFMPEG_DIR = r"C:\ffmpeg\bin"
 
-def update_category_index(category, filename, song_display_name):
-    """Updates the index.txt inside the specific category folder for Bacofy Pocket."""
+def update_genre_index(category, filename, song_display_name):
+    """Adds the song link to the specific genre index (e.g. Jpop/index.txt)"""
     index_path = os.path.join(category, "index.txt")
-    
-    # Format for Bacofy Pocket: DirectURL, SongName
     file_url = f"{BASE_URL}{category}/{filename}"
     entry = f"{file_url}, {song_display_name}"
     
-    # Check if entry already exists
+    # Check for duplicates
     if os.path.exists(index_path):
         with open(index_path, "r") as f:
             if entry in f.read():
-                print(f"--- Info: {song_display_name} already exists in {category}/index.txt ---")
+                print(f"--- Info: {song_display_name} already exists in {category} ---")
                 return
 
-    # Append to the category index
     with open(index_path, "a") as f:
         f.write(entry + "\n")
-    print(f"--- Success: Added to {category}/index.txt ---")
+    print(f"--- Success: {song_display_name} added to {category}/index.txt ---")
 
-def download_and_convert():
-    print("==============================")
-    print("   BACOFY SYSTEM - ENCODER    ")
-    print("==============================")
-    
+def run_bacofy():
+    print("=== BACOFY MUSIC ENCODER (English) ===")
     url = input("YouTube URL: ")
-    print("\nAvailable Categories (e.g., Tekk, Jpop, Kpop)")
-    category = input("Enter Category: ")
-    song_input = input("Enter Song Name (as shown in Minecraft): ")
+    category = input("Genre (Folder name, e.g., Jpop or Tekk): ")
+    song_name = input("Song Name (for the UI): ")
     
-    # Format filename for filesystem (no spaces)
-    filename = song_input.replace(" ", "_") + ".dfpwm"
-
-    # Ensure folder exists
+    # Clean filename
+    safe_filename = song_name.replace(" ", "_") + ".dfpwm"
+    
     if not os.path.exists(category):
         os.makedirs(category)
 
-    # yt-dlp options
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'temp_audio.%(ext)s',
         'ffmpeg_location': FFMPEG_DIR,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'wav',
-        }],
+        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]
     }
 
     try:
-        print(f"\n--- Action: Downloading {song_input}... ---")
+        print(f"--- Downloading: {song_name} ---")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        print("--- Action: Converting to DFPWM... ---")
-        output_path = os.path.join(category, filename)
-        
-        # FFmpeg conversion
+        print(f"--- Converting to DFPWM ---")
+        output_file = os.path.join(category, safe_filename)
         subprocess.run([
             FFMPEG_PATH, '-y', '-i', 'temp_audio.wav',
             '-ac', '1', '-ar', '48000', '-acodec', 'dfpwm',
-            output_path
+            output_file
         ], check=True)
 
-        # Update the index file for the Pocket Client
-        update_category_index(category, filename, song_input)
+        update_genre_index(category, safe_filename, song_name)
 
-        # Cleanup
         if os.path.exists('temp_audio.wav'):
             os.remove('temp_audio.wav')
-        
-        print(f"\n=== FINISHED! ===")
-        print(f"File: {output_path}")
-        print("Now run: git add . && git commit -m 'New Song' && git push")
+            
+        print("\n=== DONE! ===")
+        print(f"Folder: {category} | File: {safe_filename}")
+        print("Ready for: git add . && git commit -m 'Add song' && git push")
 
     except Exception as e:
-        print(f"\n!!! ERROR: {e} !!!")
+        print(f"!!! Error: {e} !!!")
 
 if __name__ == "__main__":
-    download_and_convert()
+    run_bacofy()
