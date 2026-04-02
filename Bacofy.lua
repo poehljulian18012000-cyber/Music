@@ -1,9 +1,12 @@
 -- ==========================================
--- BACOFY POCKET (Mobile Edition)
--- Professional English Version
+-- PROGRAM: BACOFY POCKET PRO
+-- VERSION: V2.1 (TESTED CONNECTION)
+-- AUTHOR:  Julian & Gemini
+-- STATUS:  CONNECTION TO VS CODE STABLE!
 -- ==========================================
 
 local speaker = peripheral.find("speaker")
+-- Dein Haupt-Index auf GitHub (wichtig für die Genre-Liste)
 local indexURL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/index.txt"
 
 local masterPlaylists, currentSongs = {}, {}
@@ -13,7 +16,7 @@ local logs = {}
 
 local w, h = term.getSize()
 
--- COMPACT DFPWM DECODER
+-- DFPWM DECODER (Standard für ComputerCraft Audio)
 local function createDecoder()
     local charge, prec = 0, 0
     return function(byte)
@@ -35,13 +38,15 @@ local function log(msg, color)
     if #logs > 4 then table.remove(logs, 1) end
 end
 
+-- UI ZEICHNEN
 local function drawUI()
     term.setBackgroundColor(colors.black)
     term.clear()
     
     term.setCursorPos(1, 1)
     term.setTextColor(colors.cyan)
-    term.write(view == "MASTER" and "--- POCKET B-PRO ---" or "--- " .. string.upper(selectedPlaylistName) .. " ---")
+    -- HIER SIEHST DU DAS UPDATE IM SPIEL:
+    term.write(view == "MASTER" and "--- BACOFY V2.1 ---" or "--- " .. string.upper(selectedPlaylistName) .. " ---")
     
     local displayList = (view == "MASTER") and masterPlaylists or currentSongs
     if displayList then
@@ -51,7 +56,7 @@ local function drawUI()
             term.setBackgroundColor(isCurrent and colors.lime or (view == "MASTER" and colors.purple or colors.blue))
             term.setTextColor(isCurrent and colors.black or colors.white)
             term.setCursorPos(1, 1 + i)
-            term.write(string.sub(i .. "." .. item.name, 1, w))
+            term.write(string.sub(i .. ". " .. item.name, 1, w))
         end
     end
     
@@ -79,15 +84,15 @@ local function drawUI()
     end
 end
 
+-- AUDIO STREAMING LOGIK
 local function playSong(url)
     if not speaker then log("No Speaker!", colors.red) return end
-    
     local res = http.get({ url = url:gsub("%s+", ""), binary = true })
-    if not res then log("Link Error", colors.red) return end
+    if not res then log("HTTP Link Error!", colors.red) return end
     
     local decode = createDecoder()
     isPlaying = true
-    log("Playing...", colors.lime)
+    log("Streaming...", colors.lime)
     
     while isPlaying do
         local chunk = res.read(1024)
@@ -109,6 +114,7 @@ local function playSong(url)
     end
 end
 
+-- TEXTLISTEN LADEN (index.txt & playlist.txt)
 local function getList(url)
     local res = http.get(url)
     if not res then return nil end
@@ -121,6 +127,7 @@ local function getList(url)
     return list
 end
 
+-- KLICK-STEUERUNG
 local function inputTask()
     while true do
         local _, _, x, y = os.pullEvent("mouse_click")
@@ -128,6 +135,7 @@ local function inputTask()
             local choice = y - 1
             if view == "MASTER" and masterPlaylists[choice] then
                 selectedPlaylistName = masterPlaylists[choice].name
+                log("Loading " .. selectedPlaylistName, colors.cyan)
                 currentSongs = getList(masterPlaylists[choice].url)
                 if currentSongs then view = "SONGS" end
             elseif view == "SONGS" and currentSongs[choice] then
@@ -136,7 +144,7 @@ local function inputTask()
             end
         elseif y == h-2 then
             if x <= 8 then view = "MASTER" 
-            elseif x >= 10 then vol = (vol + 0.1 > 1) and 0.1 or vol + 0.1 end
+            elseif x >= 10 then vol = math.min(1, vol + 0.1); if vol >= 1 then vol = 0.1 end end
         elseif y == h-1 then
             if x <= 4 then isPlaying = false; currentIdx = currentIdx - 1; if currentIdx < 1 then currentIdx = #currentSongs end; os.queueEvent("start_music")
             elseif x <= 11 then if isPlaying then isPlaying = false else os.queueEvent("start_music") end
@@ -146,6 +154,7 @@ local function inputTask()
     end
 end
 
+-- START DES PROGRAMMS
 log("Bacofy Booting...", colors.cyan)
 masterPlaylists = getList(indexURL)
 drawUI()
