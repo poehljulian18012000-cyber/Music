@@ -5,6 +5,7 @@ import subprocess
 import threading
 import re
 
+# --- CONFIG ---
 BASE_URL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/"
 FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFMPEG_DIR = r"C:\ffmpeg\bin"
@@ -15,7 +16,7 @@ ctk.set_default_color_theme("blue")
 class BacofyApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("BACOFY RAW CONVERTER (Max Quality)")
+        self.title("BACOFY RAW HQ v3.9")
         self.geometry("550x600")
 
         ctk.CTkLabel(self, text="BACOFY RAW CONVERTER", font=("Roboto", 24, "bold")).pack(pady=20)
@@ -29,9 +30,8 @@ class BacofyApp(ctk.CTk):
         self.btn = ctk.CTkButton(self, text="RAW KONVERTIEREN & PUSH", command=self.start_process)
         self.btn.pack(pady=20)
 
-        self.status_box = ctk.CTkTextbox(self, width=450, height=200)
+        self.status_box = ctk.CTkTextbox(self, width=450, height=200, font=("Consolas", 12))
         self.status_box.pack(pady=10)
-        self.log("ACHTUNG: Generiert große RAW-Dateien für besten Sound. 🥓")
 
     def log(self, text):
         self.status_box.insert("end", f"> {text}\n"); self.status_box.see("end")
@@ -43,44 +43,42 @@ class BacofyApp(ctk.CTk):
     def process(self):
         url, genre, d_name = self.url_entry.get().strip(), self.genre_entry.get().strip(), self.name_entry.get().strip()
         if not url or not genre or not d_name:
-            self.log("Felder ausfüllen!"); self.btn.configure(state="normal"); return
+            self.log("FEHLER: Felder ausfüllen!"); self.btn.configure(state="normal"); return
 
         try:
-            self.log("Sync GitHub...")
+            self.log("Synchronisiere GitHub...")
             subprocess.run(["git", "pull", "origin", "main"], check=True)
 
-            # ENDUNG IST JETZT .raw
-            clean_filename = re.sub(r'[^a-zA-Z0-9]', '', d_name) + ".raw"
+            # Dateiname säubern (Keine Backslashes!)
+            safe_name = re.sub(r'[^a-zA-Z0-9]', '', d_name)
+            output_file = os.path.join(genre, f"{safe_name}.raw")
             if not os.path.exists(genre): os.makedirs(genre)
 
-            self.log("Lade Audio...")
+            self.log("Lade von YouTube...")
             ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'temp.%(ext)s', 'ffmpeg_location': FFMPEG_DIR, 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
             
-            output_file = os.path.join(genre, clean_filename)
-            
-            # FFmpeg Befehl für pures 8-Bit PCM (Keine DFPWM Kompression mehr!)
-            self.log("RAW-Konvertierung (Kristallklar)...")
+            # HQ Konvertierung zu RAW PCM 8-Bit (Ohne SOXR)
+            self.log("Konvertiere zu RAW (Max Quality)...")
             subprocess.run([
                 FFMPEG_PATH, '-y', '-i', 'temp.wav',
-                '-af', 'volume=-1dB',
-                '-ac', '1', '-ar', '48000', 
-                '-acodec', 'pcm_s8', '-f', 's8', 
+                '-af', 'aresample=48000:resample_cutoff=0.99:dither_method=triangular,volume=-1dB',
+                '-ac', '1', '-ar', '48000', '-f', 's8', '-acodec', 'pcm_s8',
                 output_file
             ], check=True)
 
             self.log("Update Playlist...")
             playlist_path = os.path.join(genre, "playlist.txt")
-            entry = f"{BASE_URL}{genre}/{clean_filename}, {d_name}\n"
-            with open(playlist_path, "a") as f: f.write(entry)
+            with open(playlist_path, "a") as f: 
+                f.write(f"{BASE_URL}{genre}/{safe_name}.raw, {d_name}\n")
 
-            self.log("Push zu GitHub...")
+            self.log("Pushe zu GitHub...")
             subprocess.run(["git", "add", "."], check=True)
             subprocess.run(["git", "commit", "-m", f"RAW Add: {d_name}"], check=True)
             subprocess.run(["git", "push", "origin", "main"], check=True)
 
             if os.path.exists('temp.wav'): os.remove('temp.wav')
-            self.log("FERTIG!")
+            self.log("ERFOLGREICH! Musik ist online.")
         except Exception as e: self.log(f"FEHLER: {str(e)}")
         finally: self.btn.configure(state="normal")
 
