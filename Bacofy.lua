@@ -1,6 +1,5 @@
 -- ==========================================
--- PROGRAM: BACOFY (DEIN ORIGINAL DESIGN)
--- AUTHOR:  Julian & Gemini
+-- PROGRAM: BACOFY (HQ AUDIO + ORIGINAL DESIGN)
 -- ==========================================
 
 local speaker = peripheral.find("speaker")
@@ -9,18 +8,9 @@ local indexURL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Mu
 local masterPlaylists, currentSongs = {}, {}
 local view, vol, currentIdx, isPlaying = "MASTER", 0.5, 1, false
 local selectedPlaylistName = ""
-local progress = 0
 local w, h = term.getSize()
 
--- HILFSFUNKTIONEN FÜR DEIN DESIGN
-local function writeCent(text, y, fg, bg)
-    term.setCursorPos(math.floor((w - #text) / 2) + 1, y)
-    term.setTextColor(fg or colors.white)
-    term.setBackgroundColor(bg or colors.black)
-    term.write(text)
-end
-
--- DER VERBESSERTE DECODER (Bleibt im Hintergrund)
+-- HQ DECODER (SMOOTH TRANSITION)
 local function createDecoder()
     local charge, prec = 0, 0
     return function(byte)
@@ -28,6 +18,7 @@ local function createDecoder()
         for i = 0, 7 do
             local bit = bit32.extract(byte, i, 1) == 1
             local target = bit and 127 or -128
+            -- Smoothing Filter
             charge = charge + bit32.arshift((target - charge) * 48, 8) 
             if bit == (prec > 0) or (bit and prec == 0) then prec = math.min(prec + 1, 12)
             else prec = math.max(prec - 2, -12) end
@@ -49,22 +40,24 @@ local function getList(url)
     return list
 end
 
--- DEIN ORIGINAL UI DESIGN (Aus dem Screenshot)
 local function drawUI()
     term.setBackgroundColor(colors.black)
     term.clear()
-
+    
     -- Header
-    term.setBackgroundColor(colors.blue)
     term.setCursorPos(1, 1)
+    term.setBackgroundColor(colors.blue)
     term.clearLine()
-    writeCent("BACOFY MUSIC", 1, colors.white, colors.blue)
+    local header = "BACOFY MUSIC"
+    term.setCursorPos(math.floor((w - #header) / 2) + 1, 1)
+    term.write(header)
 
     -- Liste
+    term.setBackgroundColor(colors.black)
     local displayList = (view == "MASTER") and masterPlaylists or currentSongs
     if displayList then
         for i, item in ipairs(displayList) do
-            if i > h - 4 then break end
+            if i > h - 3 then break end
             term.setCursorPos(2, 2 + i)
             if view == "SONGS" and i == currentIdx and isPlaying then
                 term.setTextColor(colors.lime)
@@ -76,22 +69,20 @@ local function drawUI()
         end
     end
 
-    -- Footer / Status
+    -- Footer
     term.setCursorPos(1, h)
     term.setBackgroundColor(colors.gray)
     term.clearLine()
     term.setTextColor(colors.white)
-    term.write(" VOL: " .. math.floor(vol*100) .. "% | [B] ZURUECK | [R] REFRESH")
+    term.write(" VOL: " .. math.floor(vol*100) .. "% | [B] BACK | [R] REFRESH")
 end
 
 local function playSong(url)
     if not speaker then return end
     local res = http.get({ url = url, binary = true })
     if not res then return end
-    
     local decode = createDecoder()
     isPlaying = true
-    
     while isPlaying do
         local chunk = res.read(4096)
         if not chunk then break end
@@ -116,10 +107,10 @@ masterPlaylists = getList(indexURL)
 drawUI()
 
 parallel.waitForAny(
-    function()
+    function() -- Klick-Logik
         while true do
             local _, _, x, y = os.pullEvent("mouse_click")
-            if y >= 3 and y <= h-1 then
+            if y >= 3 and y < h then
                 local idx = y - 2
                 if view == "MASTER" and masterPlaylists[idx] then
                     selectedPlaylistName = masterPlaylists[idx].name
@@ -134,7 +125,7 @@ parallel.waitForAny(
             drawUI()
         end
     end,
-    function()
+    function() -- Tasten-Logik
         while true do
             local _, key = os.pullEvent("key")
             if key == keys.b then view = "MASTER"
@@ -142,7 +133,7 @@ parallel.waitForAny(
             drawUI()
         end
     end,
-    function()
+    function() -- Musik Task
         while true do
             os.pullEvent("start_music")
             if currentSongs[currentIdx] then playSong(currentSongs[currentIdx].url) end
