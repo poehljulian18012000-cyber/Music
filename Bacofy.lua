@@ -1,5 +1,5 @@
 -- ==========================================
--- BACOFY POCKET (RAW HQ Edition)
+-- BACOFY POCKET (Mobile Edition) - RAW FIX
 -- ==========================================
 local speaker = peripheral.find("speaker")
 local indexURL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/index.txt"
@@ -11,7 +11,7 @@ local logs = {}
 
 local w, h = term.getSize()
 
--- (Der alte Decoder wurde entfernt, da wir jetzt RAW 8-Bit nutzen)
+-- (Der alte Decoder-Block wurde entfernt, da RAW-Dateien keinen brauchen)
 
 local function log(msg, color)
     table.insert(logs, { text = msg, col = color or colors.yellow })
@@ -66,7 +66,7 @@ local function drawUI()
     end
 end
 
--- NEUE RAW-PLAY LOGIK (Angepasst für Pocket)
+-- GEÄNDERT: Jetzt für RAW-Dateien optimiert
 local function playSong(url)
     if not speaker then log("No Speaker!", colors.red) return end
     
@@ -77,13 +77,12 @@ local function playSong(url)
     log("Playing RAW...", colors.lime)
     
     while isPlaying do
-        -- Größerer Chunk (8192) für flüssigeres RAW-Streaming
-        local chunk = res.read(8192)
+        local chunk = res.read(2048) -- RAW braucht größere Chunks
         if not chunk then break end
         
         local buffer = {}
         for i = 1, #chunk do
-            -- Byte lesen und für Speaker-Format (-128 bis 127) umrechnen
+            -- Direktes Umwandeln der RAW-Bytes für den Speaker
             local val = string.byte(chunk, i)
             if val > 127 then val = val - 256 end
             table.insert(buffer, val)
