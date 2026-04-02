@@ -1,162 +1,165 @@
 -- ==========================================
--- BACOFY POCKET (Mobile Edition) - RAW FIX
+-- BACOFY RAW ULTIMATE - From Scratch
 -- ==========================================
+
+-- 1. INITIALISIERUNG
 local speaker = peripheral.find("speaker")
 local indexURL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/index.txt"
 
-local masterPlaylists, currentSongs = {}, {}
-local view, vol, currentIdx, isPlaying = "MASTER", 0.5, 1, false
-local selectedPlaylistName = ""
-local logs = {}
+local state = {
+    view = "MASTER", -- MASTER oder SONGS
+    playlists = {},
+    songs = {},
+    currentIdx = 1,
+    volume = 0.5,
+    isPlaying = false,
+    status = "Bereit",
+    selectedPlaylist = ""
+}
 
 local w, h = term.getSize()
 
--- (Der alte Decoder-Block wurde entfernt, da RAW-Dateien keinen brauchen)
-
-local function log(msg, color)
-    table.insert(logs, { text = msg, col = color or colors.yellow })
-    if #logs > 4 then table.remove(logs, 1) end
-end
-
-local function drawUI()
-    term.setBackgroundColor(colors.black)
-    term.clear()
-    
-    -- Header
-    term.setCursorPos(1, 1)
-    term.setTextColor(colors.cyan)
-    term.write(view == "MASTER" and "--- POCKET B-PRO ---" or "--- SONGS ---")
-    
-    -- Liste (Kompakt für Pocket)
-    local displayList = (view == "MASTER") and masterPlaylists or currentSongs
-    if displayList then
-        for i, item in ipairs(displayList) do
-            if i > h - 8 then break end
-            local isCurrent = (view == "SONGS" and i == currentIdx and isPlaying)
-            term.setBackgroundColor(isCurrent and colors.lime or (view == "MASTER" and colors.purple or colors.blue))
-            term.setTextColor(isCurrent and colors.black or colors.white)
-            term.setCursorPos(1, 1 + i)
-            term.write(string.sub(i .. "." .. item.name, 1, w))
+-- 2. HILFSFUNKTIONEN (LOGIK)
+local function fetchData(url)
+    local res = http.get(url .. "?t=" .. os.epoch("utc"))
+    if not res then return nil end
+    local data = {}
+    for line in res.readAll():gmatch("[^\r\n]+") do
+        local link, name = line:match("^(.*),(.*)$")
+        if link then 
+            table.insert(data, {url = link:gsub("%s+", ""), name = name:match("^%s*(.-)%s*$")})
         end
     end
-    
-    -- Controls am unteren Rand
-    term.setBackgroundColor(colors.gray)
-    term.setTextColor(colors.white)
-    term.setCursorPos(1, h-2)
-    term.write(view == "SONGS" and " [BACK] " or " [REFRESH] ")
-    term.write(" VOL: " .. math.floor(vol*100) .. "%")
-
-    term.setCursorPos(1, h-1)
-    term.setBackgroundColor(colors.red)
-    term.write(" << ")
-    term.setBackgroundColor(isPlaying and colors.orange or colors.green)
-    term.setTextColor(colors.black)
-    term.write(isPlaying and " STOP " or " PLAY ")
-    term.setBackgroundColor(colors.red)
-    term.setTextColor(colors.white)
-    term.write(" >> ")
-    
-    -- Mini-Log
-    if logs[#logs] then
-        term.setBackgroundColor(colors.black)
-        term.setTextColor(logs[#logs].col)
-        term.setCursorPos(1, h)
-        term.write("> " .. string.sub(logs[#logs].text, 1, w-2))
-    end
+    res.close()
+    return data
 end
 
--- GEÄNDERT: Jetzt für RAW-Dateien optimiert
+-- 3. DER RAW-PLAYER (DAS HERZSTÜCK)
 local function playSong(url)
-    if not speaker then log("No Speaker!", colors.red) return end
+    if not speaker then state.status = "Kein Speaker!"; return end
     
-    local res = http.get({ url = url:gsub("%s+", ""), binary = true })
-    if not res then log("404 Error", colors.red) return end
+    local res = http.get({ url = url, binary = true })
+    if not res then state.status = "Download-Fehler"; return end
     
-    isPlaying = true
-    log("Playing RAW...", colors.lime)
+    state.isPlaying = true
+    state.status = "Spiele..."
     
-    while isPlaying do
-        local chunk = res.read(2048) -- RAW braucht größere Chunks
+    while state.isPlaying do
+        local chunk = res.read(8192) -- Optimaler Puffer für RAW
         if not chunk then break end
         
         local buffer = {}
         for i = 1, #chunk do
-            -- Direktes Umwandeln der RAW-Bytes für den Speaker
             local val = string.byte(chunk, i)
+            -- RAW 8-Bit Signed Konvertierung
             if val > 127 then val = val - 256 end
             table.insert(buffer, val)
         end
         
-        while isPlaying and not speaker.playAudio(buffer, vol) do
+        -- Warten, wenn Speaker-Buffer voll ist
+        while state.isPlaying and not speaker.playAudio(buffer, state.volume) do
             os.pullEvent("speaker_audio_empty")
         end
         os.sleep(0)
     end
+    
     res.close()
-    if isPlaying then 
-        currentIdx = (currentIdx % #currentSongs) + 1
-        os.queueEvent("start_music")
+    if state.isPlaying then 
+        state.currentIdx = (state.currentIdx % #state.songs) + 1
+        os.queueEvent("auto_next")
     end
 end
 
-local function getList(url)
-    local res = http.get(url)
-    if not res then return nil end
-    local list = {}
-    for line in res.readAll():gmatch("[^\r\n]+") do
-        local l, n = line:match("^(.*),(.*)$")
-        if l then table.insert(list, {url=l:gsub("%s+",""), name=n:match("^%s*(.-)%s*$")}) end
-    end
-    res.close()
-    return list
-end
+-- 4. UI-ENGINE (DESIGN)
+local function draw()
+    term.setBackgroundColor(colors.black)
+    term.clear()
+    
+    -- TOP BAR
+    term.setCursorPos(1, 1)
+    term.setBackgroundColor(colors.gray)
+    term.clearLine()
+    term.setTextColor(colors.cyan)
+    term.write(" BACOFY RAW ")
+    term.setTextColor(colors.white)
+    term.write(state.view == "MASTER" and " > Playlists" or " > " .. state.selectedPlaylist)
 
-local function inputTask()
-    while true do
-        local _, _, x, y = os.pullEvent("mouse_click")
+    -- LISTE
+    local list = (state.view == "MASTER") and state.playlists or state.songs
+    for i, item in ipairs(list) do
+        if i > h - 4 then break end
         
-        if y >= 2 and y <= h-3 then
-            local choice = y - 1
-            if view == "MASTER" and masterPlaylists[choice] then
-                selectedPlaylistName = masterPlaylists[choice].name
-                currentSongs = getList(masterPlaylists[choice].url)
-                if currentSongs then view = "SONGS" end
-            elseif view == "SONGS" and currentSongs[choice] then
-                currentIdx, isPlaying = choice, false
-                os.queueEvent("start_music")
-            end
-        elseif y == h-2 then
-            if x <= 8 then view = "MASTER" 
-            elseif x >= 10 then vol = (vol + 0.1 > 1) and 0.1 or vol + 0.1 end
-        elseif y == h-1 then
-            if x <= 4 then -- Prev
-                isPlaying = false
-                currentIdx = currentIdx - 1
-                if currentIdx < 1 then currentIdx = #currentSongs end
-                os.queueEvent("start_music")
-            elseif x <= 11 then -- Play/Stop
-                if isPlaying then isPlaying = false else os.queueEvent("start_music") end
-            elseif x <= 15 then -- Next
-                isPlaying = false
-                currentIdx = (currentIdx % #currentSongs) + 1
-                os.queueEvent("start_music")
-            end
+        local isSelected = (state.view == "SONGS" and i == state.currentIdx and state.isPlaying)
+        term.setCursorPos(2, i + 2)
+        
+        if isSelected then
+            term.setTextColor(colors.lime)
+            term.write(">> " .. item.name)
+        else
+            term.setTextColor(colors.white)
+            term.write(i .. ". " .. item.name)
         end
-        drawUI()
+    end
+
+    -- BOTTOM BAR (CONTROLS)
+    term.setCursorPos(1, h - 1)
+    term.setBackgroundColor(colors.blue)
+    term.clearLine()
+    term.setTextColor(colors.white)
+    local playLabel = state.isPlaying and " [STOP] " or " [PLAY] "
+    term.write(playLabel .. " VOL: " .. math.floor(state.volume * 100) .. "% | [B] Zurück")
+
+    -- STATUS ZEILE
+    term.setCursorPos(1, h)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.lightGray)
+    term.clearLine()
+    term.write(" Status: " .. state.status)
+end
+
+-- 5. EVENT-LOOP (BEDIENUNG)
+local function main()
+    state.playlists = fetchData(indexURL) or {}
+    draw()
+    
+    while true do
+        local event, p1, p2, p3 = os.pullEvent()
+        
+        if event == "mouse_click" then
+            local y = p3
+            if y >= 3 and y < h - 1 then
+                local idx = y - 2
+                if state.view == "MASTER" and state.playlists[idx] then
+                    state.selectedPlaylist = state.playlists[idx].name
+                    state.songs = fetchData(state.playlists[idx].url)
+                    state.view = "SONGS"
+                elseif state.view == "SONGS" and state.songs[idx] then
+                    state.currentIdx = idx
+                    state.isPlaying = false
+                    os.queueEvent("start_music")
+                end
+            elseif y == h - 1 then -- Control Bar Click
+                if p2 <= 8 then -- Play/Stop Bereich
+                    if state.isPlaying then state.isPlaying = false else os.queueEvent("start_music") end
+                else -- Volume Bereich
+                    state.volume = (state.volume >= 1) and 0.1 or state.volume + 0.1
+                end
+            end
+        
+        elseif event == "key" then
+            if p1 == keys.b then state.view = "MASTER"
+            elseif p1 == keys.r then state.playlists = fetchData(indexURL) end
+            
+        elseif event == "start_music" or event == "auto_next" then
+            parallel.waitForAny(
+                function() while true do os.pullEvent(); draw() end end, -- UI Update während Play
+                function() playSong(state.songs[state.currentIdx].url) end
+            )
+        end
+        
+        draw()
     end
 end
 
-log("Pocket Boot...", colors.cyan)
-masterPlaylists = getList(indexURL)
-drawUI()
-
-parallel.waitForAny(
-    inputTask,
-    function()
-        while true do
-            os.pullEvent("start_music")
-            playSong(currentSongs[currentIdx].url)
-        end
-    end
-)
+-- START
+main()
