@@ -6,7 +6,7 @@ import threading
 import re
 
 # --- CONFIG ---
-# Dein GitHub-Pfad (achte darauf, dass am Ende ein / steht)
+# Dein GitHub-Pfad
 BASE_URL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/"
 FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFMPEG_DIR = r"C:\ffmpeg\bin"
@@ -18,7 +18,7 @@ class BacofyApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("BACOFY Desktop Control Center v3.1")
+        self.title("BACOFY Desktop Control Center v3.2")
         self.geometry("550x600")
 
         # Header
@@ -51,7 +51,6 @@ class BacofyApp(ctk.CTk):
         self.status_box.see("end")
 
     def start_process(self):
-        # Threading damit das Fenster nicht einfriert
         self.convert_button.configure(state="disabled")
         thread = threading.Thread(target=self.process)
         thread.start()
@@ -71,14 +70,12 @@ class BacofyApp(ctk.CTk):
             self.log("Synchronisiere mit GitHub (Pull)...")
             subprocess.run(["git", "pull", "origin", "main"], check=True)
 
-            # 2. DATEINAME REINIGEN (Wichtig für Minecraft!)
-            # Entfernt alles außer Buchstaben und Zahlen
+            # 2. DATEINAME REINIGEN
             clean_filename = re.sub(r'[^a-zA-Z0-9]', '', display_name) + ".dfpwm"
             self.log(f"Dateiname: {clean_filename}")
 
             if not os.path.exists(genre):
                 os.makedirs(genre)
-                self.log(f"Ordner {genre} wurde erstellt.")
 
             # 3. YOUTUBE DOWNLOAD
             self.log("Lade Video/Audio von YouTube...")
@@ -93,7 +90,7 @@ class BacofyApp(ctk.CTk):
                 ydl.download([url])
 
             # 4. FFMPEG KONVERTIERUNG
-            self.log("Konvertiere zu DFPWM (Minecraft)...")
+            self.log("Konvertiere zu DFPWM...")
             output_file = os.path.join(genre, clean_filename)
             subprocess.run([
                 FFMPEG_PATH, '-y', '-i', 'temp_audio.wav',
@@ -101,30 +98,37 @@ class BacofyApp(ctk.CTk):
                 output_file
             ], check=True)
 
-            # 5. PLAYLIST AKTUALISIEREN
+            # 5. PLAYLIST AKTUALISIEREN (Sichere Zeilenumbruch-Logik)
             self.log("Trage Song in playlist.txt ein...")
             playlist_path = os.path.join(genre, "playlist.txt")
-            # Der Link muss URL-konform sein (BASE_URL + Ordner + clean_filename)
             final_url = f"{BASE_URL}{genre}/{clean_filename}"
-            entry = f"{final_url}, {display_name}\n"
+            new_entry = f"{final_url}, {display_name}"
             
-            with open(playlist_path, "a") as f:
-                f.write(entry)
+            # Prüfen ob Datei existiert und Inhalt lesen
+            content = ""
+            if os.path.exists(playlist_path):
+                with open(playlist_path, "r") as f:
+                    content = f.read()
+            
+            # Sicherstellen, dass wir in einer neuen Zeile schreiben
+            if content != "" and not content.endswith("\n"):
+                content += "\n"
+            
+            content += new_entry + "\n"
+            
+            with open(playlist_path, "w") as f:
+                f.write(content)
 
-            # 6. GIT PUSH (Upload)
+            # 6. GIT PUSH
             self.log("Sende Daten zu GitHub (Push)...")
             subprocess.run(["git", "add", "."], check=True)
             subprocess.run(["git", "commit", "-m", f"Bacofy Auto-Add: {display_name}"], check=True)
             subprocess.run(["git", "push", "origin", "main"], check=True)
 
-            # Cleanup
             if os.path.exists('temp_audio.wav'):
                 os.remove('temp_audio.wav')
             
-            self.log("================================")
-            self.log("ERFOLG! Song ist online.")
-            self.log("Klicke REFRESH in Minecraft.")
-            self.log("================================")
+            self.log("ERFOLG! Song '" + display_name + "' ist online.")
             
         except Exception as e:
             self.log(f"!!! FEHLER: {str(e)}")
