@@ -1,5 +1,5 @@
 -- ==========================================
--- PROGRAM: BACOFY (ORIGINAL DESIGN + SMOOTH DECODER)
+-- PROGRAM: BACOFY RAW EDITION (Dein Design)
 -- ==========================================
 
 local speaker = peripheral.find("speaker")
@@ -10,36 +10,7 @@ local view, vol, currentIdx, isPlaying = "MASTER", 0.5, 1, false
 local selectedPlaylistName = ""
 local w, h = term.getSize()
 
--- HQ SMOOTH DECODER
-local function createDecoder()
-    local charge, prec = 0, 0
-    local lastSamples = {0, 0, 0} -- Speicher für den Filter
-    
-    return function(byte)
-        local out = {}
-        for i = 0, 7 do
-            local bit = bit32.extract(byte, i, 1) == 1
-            local target = bit and 127 or -128
-            
-            -- Standard DFPWM Logik
-            charge = charge + bit32.arshift((target - charge) * 48, 8) 
-            if bit == (prec > 0) or (bit and prec == 0) then 
-                prec = math.min(prec + 1, 12)
-            else 
-                prec = math.max(prec - 2, -12) 
-            end
-            
-            -- NEU: Moving Average Filter (Glättung)
-            -- Wir nehmen den Durchschnitt aus dem aktuellen und den letzten Werten
-            local smoothCharge = (charge + lastSamples[1] + lastSamples[2]) / 3
-            table.remove(lastSamples, 1)
-            table.insert(lastSamples, charge)
-            
-            out[i + 1] = smoothCharge
-        end
-        return out
-    end
-end
+-- (Der alte Decoder wurde gelöscht, da wir RAW streamen)
 
 local function getList(url)
     local res = http.get(url .. "?t=" .. os.epoch("utc"))
@@ -53,7 +24,7 @@ local function getList(url)
     return list
 end
 
--- DEIN ORIGINAL DESIGN (Unverändert!)
+-- DEIN ORIGINAL DESIGN
 local function drawUI()
     term.setBackgroundColor(colors.black)
     term.clear()
@@ -92,22 +63,28 @@ local function playSong(url)
     if not speaker then return end
     local res = http.get({ url = url, binary = true })
     if not res then return end
-    local decode = createDecoder()
+    
     isPlaying = true
     while isPlaying do
-        local chunk = res.read(4096)
+        -- Größere Chunks laden, da RAW-Dateien größer sind
+        local chunk = res.read(16384) 
         if not chunk then break end
+        
         local buffer = {}
         for i = 1, #chunk do
-            local samples = decode(chunk:byte(i))
-            for j = 1, 8 do table.insert(buffer, samples[j]) end
+            -- Byte lesen und für den Minecraft-Speaker anpassen
+            local val = string.byte(chunk, i)
+            if val > 127 then val = val - 256 end
+            table.insert(buffer, val)
         end
+        
         while isPlaying and not speaker.playAudio(buffer, vol) do
             os.pullEvent("speaker_audio_empty")
         end
         os.sleep(0)
     end
     res.close()
+    
     if isPlaying then 
         currentIdx = (currentIdx % #currentSongs) + 1
         os.queueEvent("start_music")
