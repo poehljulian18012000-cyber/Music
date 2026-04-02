@@ -5,8 +5,6 @@ import subprocess
 import threading
 import re
 
-# --- CONFIG ---
-# Dein GitHub-Pfad (Raw-Link-Basis)
 BASE_URL = "https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/"
 FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFMPEG_DIR = r"C:\ffmpeg\bin"
@@ -17,114 +15,79 @@ ctk.set_default_color_theme("blue")
 class BacofyApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("BACOFY HQ CONTROL v3.4")
-        self.geometry("550x650")
+        self.title("BACOFY HQ CONVERTER v3.7")
+        self.geometry("550x600")
 
-        # UI Elemente
         ctk.CTkLabel(self, text="BACOFY HQ CONVERTER", font=("Roboto", 24, "bold")).pack(pady=20)
-        
         self.url_entry = ctk.CTkEntry(self, placeholder_text="YouTube URL...", width=450)
         self.url_entry.pack(pady=10)
-        
-        self.genre_entry = ctk.CTkEntry(self, placeholder_text="Genre / Ordner (z.B. Jpop)", width=450)
+        self.genre_entry = ctk.CTkEntry(self, placeholder_text="Genre...", width=450)
         self.genre_entry.pack(pady=10)
-        
-        self.name_entry = ctk.CTkEntry(self, placeholder_text="Song Name für Minecraft (Anzeige)", width=450)
+        self.name_entry = ctk.CTkEntry(self, placeholder_text="Song Name...", width=450)
         self.name_entry.pack(pady=10)
 
-        self.btn = ctk.CTkButton(self, text="HQ KONVERTIEREN & PUSH", command=self.start_process, 
-                                 fg_color="#1f538d", hover_color="#14375e")
+        self.btn = ctk.CTkButton(self, text="HQ KONVERTIEREN & PUSH", command=self.start_process)
         self.btn.pack(pady=20)
 
-        self.status_box = ctk.CTkTextbox(self, width=450, height=250, font=("Consolas", 12))
+        self.status_box = ctk.CTkTextbox(self, width=450, height=200)
         self.status_box.pack(pady=10)
-        self.log("HQ-Modus aktiv: Nutzt SOXR Resampler & Loudnorm. 🥓")
+        self.log("HQ-Modus (SWR-Resample + Dither) aktiv. 🥓")
 
     def log(self, text):
-        self.status_box.insert("end", f"> {text}\n")
-        self.status_box.see("end")
+        self.status_box.insert("end", f"> {text}\n"); self.status_box.see("end")
 
     def start_process(self):
         self.btn.configure(state="disabled")
         threading.Thread(target=self.process).start()
 
     def process(self):
-        url = self.url_entry.get().strip()
-        genre = self.genre_entry.get().strip()
-        d_name = self.name_entry.get().strip()
-
+        url, genre, d_name = self.url_entry.get().strip(), self.genre_entry.get().strip(), self.name_entry.get().strip()
         if not url or not genre or not d_name:
-            self.log("FEHLER: Bitte alle Felder ausfüllen!")
-            self.btn.configure(state="normal")
-            return
+            self.log("Felder ausfüllen!"); self.btn.configure(state="normal"); return
 
         try:
-            # 1. GIT PULL
-            self.log("Synchronisiere mit GitHub (Pull)...")
+            self.log("Sync GitHub...")
             subprocess.run(["git", "pull", "origin", "main"], check=True)
 
-            # 2. DATEINAME REINIGEN
             clean_filename = re.sub(r'[^a-zA-Z0-9]', '', d_name) + ".dfpwm"
-            if not os.path.exists(genre):
-                os.makedirs(genre)
+            if not os.path.exists(genre): os.makedirs(genre)
 
-            # 3. YOUTUBE DOWNLOAD
-            self.log("Lade Video von YouTube...")
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': 'temp.%(ext)s',
-                'noplaylist': True, 
-                'ffmpeg_location': FFMPEG_DIR,
-                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
-            # 4. HQ FFMPEG KONVERTIERUNG
-            self.log("HQ-Konvertierung (Normalisierung & Filter)...")
+            self.log("Lade Audio von YouTube...")
+            ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'temp.%(ext)s', 'ffmpeg_location': FFMPEG_DIR, 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
+            
+            self.log("HQ-Konvertierung (SWR + Normalisierung)...")
             output_file = os.path.join(genre, clean_filename)
+            
+            # Optimierter Befehl für FFmpeg Essentials:
+            # aresample: Nutzt den Standard-Resampler auf höchster Stufe (triangular dither)
+            # volume: -1dB verhindert Clipping
             subprocess.run([
                 FFMPEG_PATH, '-y', '-i', 'temp.wav',
-                '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', 
-                '-ac', '1', '-ar', '48000', '-resampler', 'soxr', 
-                '-acodec', 'dfpwm', output_file
+                '-af', 'aresample=48000:resample_cutoff=0.99:dither_method=triangular,volume=-1dB',
+                '-ac', '1', 
+                '-acodec', 'dfpwm', 
+                output_file
             ], check=True)
 
-            # 5. PLAYLIST AKTUALISIEREN
-            self.log("Aktualisiere playlist.txt...")
+            self.log("Update Playlist...")
             playlist_path = os.path.join(genre, "playlist.txt")
-            final_url = f"{BASE_URL}{genre}/{clean_filename}"
-            
-            lines = []
+            content = ""
             if os.path.exists(playlist_path):
-                with open(playlist_path, "r") as f:
-                    for line in f:
-                        if line.strip(): lines.append(line.strip())
-            
-            lines.append(f"{final_url}, {d_name}")
-            
-            with open(playlist_path, "w") as f:
-                f.write("\n".join(lines) + "\n")
+                with open(playlist_path, "r") as f: content = f.read()
+            if content and not content.endswith("\n"): content += "\n"
+            content += f"{BASE_URL}{genre}/{clean_filename}, {d_name}\n"
+            with open(playlist_path, "w") as f: f.write(content)
 
-            # 6. GIT PUSH (Songs + Code)
-            self.log("Sende ALLES zu GitHub (Push)...")
+            self.log("Push zu GitHub...")
             subprocess.run(["git", "add", "."], check=True)
             subprocess.run(["git", "commit", "-m", f"HQ Add: {d_name}"], check=True)
             subprocess.run(["git", "push", "origin", "main"], check=True)
 
-            if os.path.exists('temp.wav'):
-                os.remove('temp.wav')
-            
-            self.log("================================")
-            self.log(f"ERFOLG! '{d_name}' ist online.")
-            self.log("================================")
-            
-        except Exception as e:
-            self.log(f"!!! KRITISCHER FEHLER: {str(e)}")
-        
-        finally:
-            self.btn.configure(state="normal")
+            if os.path.exists('temp.wav'): os.remove('temp.wav')
+            self.log("FERTIG! Der Song ist jetzt HQ online.")
+        except Exception as e: self.log(f"FEHLER: {str(e)}")
+        finally: self.btn.configure(state="normal")
 
 if __name__ == "__main__":
-    app = BacofyApp()
-    app.mainloop()
+    BacofyApp().mainloop()
