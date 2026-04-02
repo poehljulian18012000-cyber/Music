@@ -1,0 +1,2 @@
+https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/Jpop/playlist.txt,Jpop
+https://raw.githubusercontent.com/poehljulian18012000-cyber/Music/main/Tekk/playlist.txt,Tekk
