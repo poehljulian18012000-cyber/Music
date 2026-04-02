@@ -49,7 +49,6 @@ class BacofyApp(ctk.CTk):
             self.log("Synchronisiere GitHub...")
             subprocess.run(["git", "pull", "origin", "main"], check=True)
 
-            # Dateiname säubern (Keine Backslashes!)
             safe_name = re.sub(r'[^a-zA-Z0-9]', '', d_name)
             output_file = os.path.join(genre, f"{safe_name}.raw")
             if not os.path.exists(genre): os.makedirs(genre)
@@ -58,8 +57,7 @@ class BacofyApp(ctk.CTk):
             ydl_opts = {'format': 'bestaudio/best', 'outtmpl': 'temp.%(ext)s', 'ffmpeg_location': FFMPEG_DIR, 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
             
-            # HQ Konvertierung zu RAW PCM 8-Bit (Ohne SOXR)
-            self.log("Konvertiere zu RAW (Max Quality)...")
+            self.log("Konvertiere zu RAW (HQ-Resample)...")
             subprocess.run([
                 FFMPEG_PATH, '-y', '-i', 'temp.wav',
                 '-af', 'aresample=48000:resample_cutoff=0.99:dither_method=triangular,volume=-1dB',
@@ -78,7 +76,7 @@ class BacofyApp(ctk.CTk):
             subprocess.run(["git", "push", "origin", "main"], check=True)
 
             if os.path.exists('temp.wav'): os.remove('temp.wav')
-            self.log("ERFOLGREICH! Musik ist online.")
+            self.log("ERFOLGREICH! „" + d_name + "“ ist jetzt online.")
         except Exception as e: self.log(f"FEHLER: {str(e)}")
         finally: self.btn.configure(state="normal")
 
